@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1d2a52">
+<title>TT Kart · Teddy &amp; Tommy</title>
+<!-- The game's icon: the same emoji as its card on the dashboard, on a coloured tile. It's the browser tab's icon (the SVG, then
+     a PNG drawn below) and the iPad home screen's (apple-touch-icon). The device's own emoji font draws it: no image files. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20x='2'%20y='2'%20width='60'%20height='60'%20rx='14'%20fill='%2318d4ff'%20stroke='%2314121f'%20stroke-width='4'/%3E%3Ctext%20x='32'%20y='44'%20font-size='36'%20text-anchor='middle'%3E%F0%9F%8F%8E%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<script>
+  (function (emoji, tile) {
+    function draw(size, framed) {
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      const g = c.getContext('2d');
+      if (!g) return '';
+      const u = size / 64;
+      g.fillStyle = tile;
+      if (framed) { // the tab: a rounded tile with the dashboard's dark outline
+        g.beginPath();
+        if (g.roundRect) g.roundRect(2 * u, 2 * u, 60 * u, 60 * u, 14 * u); else g.rect(2 * u, 2 * u, 60 * u, 60 * u);
+        g.fill();
+        g.lineWidth = 4 * u;
+        g.strokeStyle = '#14121f';
+        g.stroke();
+      } else g.fillRect(0, 0, size, size); // the home screen: iOS rounds the corners itself
+      g.font = `${Math.round(size * (framed ? 0.56 : 0.62))}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+      g.textAlign = 'center';
+      const m = g.measureText(emoji);
+      const up = m.actualBoundingBoxAscent || size * 0.4, down = m.actualBoundingBoxDescent || 0;
+      g.fillText(emoji, size / 2, size / 2 + (up - down) / 2);
+      try { return c.toDataURL('image/png'); } catch (e) { return ''; }
+    }
+    const tab = draw(64, true), home = draw(180, false);
+    if (tab) document.querySelector('link[rel="icon"]').href = tab;
+    if (home) {
+      const l = document.createElement('link');
+      l.rel = 'apple-touch-icon';
+      l.href = home;
+      document.head.appendChild(l);
+    }
+  })('🏎️', '#18d4ff');
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --yellow: #ffd400;
+    --pink: #ff3d7f;
+    --cyan: #18d4ff;
+    --blue: #3d8bff;
+    --red: #ff4b5c;
+    --orange: #ff8a1f;
+    --green: #7dff5a;
+    --ink: #14121f;
+    --display: 'Bungee', 'Arial Black', Impact, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #1d2a52; color: #fff;
+    font-family: 'Rubik', system-ui, -apple-system, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { opacity: 0 !important; pointer-events: none !important; visibility: hidden; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+  @keyframes slam { from { transform: scale(2.4) rotate(-8deg); opacity: 0; } }
+  @keyframes bob { 50% { transform: translateY(-6px); } }
+
+  /* ---------- the split line between player 1 (top) and player 2 (bottom) ---------- */
+  #split { position: fixed; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px; background: var(--ink); border-top: 2px solid var(--yellow); border-bottom: 2px solid var(--yellow); pointer-events: none; }
+
+  /* ---------- HUD: one per player view ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  .view { position: absolute; left: 0; right: 0; top: 0; height: 100%; overflow: hidden; }
+  #hud.duo .view { height: 50%; }
+  #hud.duo .view.v1 { top: 50%; }
+  #hud.solo .view.v1 { display: none; }
+  .lapbox {
+    position: absolute; left: max(12px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top));
+    display: flex; flex-direction: column; gap: 2px; padding: 6px 12px; border-radius: 14px;
+    background: rgba(20, 18, 31, 0.6); border: 2px solid rgba(255, 255, 255, 0.75);
+  }
+  .lapbox .lap { font-family: var(--display); font-weight: 400; font-size: 22px; line-height: 1; color: var(--yellow); white-space: nowrap; }
+  .lapbox .lap.final { color: #ff8ab8; animation: pulse 0.6s ease-in-out infinite; }
+  .lapbox .time { font: 800 14px/1 'Rubik', sans-serif; font-variant-numeric: tabular-nums; opacity: 0.9; }
+  .itembox {
+    position: absolute; left: 50%; top: max(8px, env(safe-area-inset-top)); translate: -50% 0; width: 70px; height: 70px; border-radius: 18px;
+    background: rgba(20, 18, 31, 0.6); border: 3px solid #fff; display: grid; place-items: center; box-shadow: 0 4px 0 var(--ink);
+  }
+  .itembox .slot { font-size: 42px; line-height: 1; }
+  .itembox.rolling .slot { animation: pulse 0.15s linear infinite; }
+  .itembox.ready { border-color: var(--yellow); box-shadow: 0 4px 0 var(--ink), 0 0 18px rgba(255, 212, 0, 0.8); }
+  .itembox .n { position: absolute; right: -8px; bottom: -8px; font-family: var(--display); font-size: 16px; background: var(--yellow); color: var(--ink); border-radius: 999px; padding: 2px 7px; border: 2px solid var(--ink); }
+  .itembox .n:empty { display: none; }
+  .placebox {
+    position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom));
+    font-family: var(--display); font-size: 60px; line-height: 1; color: #fff;
+    -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; text-shadow: 0 5px 0 var(--ink), 0 0 18px rgba(20, 18, 31, 0.6);
+  }
+  .placebox.p1 { color: var(--yellow); }
+  .placebox.p2 { color: #d9e6ff; }
+  .placebox.p3 { color: #ffb36b; }
+  .placebox.pop { animation: slam 0.35s ease-out; }
+  .map { position: absolute; right: max(12px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); width: 120px; height: 120px; opacity: 0.92; }
+  .bud {
+    position: absolute; left: max(12px, env(safe-area-inset-left)); top: calc(max(10px, env(safe-area-inset-top)) + 58px);
+    display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 3px; border-radius: 999px;
+    background: rgba(20, 18, 31, 0.6); border: 2px solid rgba(255, 255, 255, 0.75); --fill: 0; pointer-events: auto;
+  }
+  .bud img { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #fff; background: radial-gradient(circle at 50% 35%, #ffe2a0, #ff9f1c); object-fit: cover; }
+  .bud .lbl { font: 800 10px/1.1 'Rubik', sans-serif; letter-spacing: 0.5px; white-space: nowrap; }
+  .bud .lbl b { display: block; font-family: var(--display); font-weight: 400; font-size: 12px; }
+  .bud i { position: relative; width: 46px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
+  .bud i::after { content: ''; position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--fill)); background: linear-gradient(90deg, #9dff6a, #3fc22b); }
+  .bud .k { font: 800 11px/1 'Rubik', sans-serif; padding: 4px 6px; border-radius: 6px; background: #fff; color: var(--ink); white-space: nowrap; }
+  .bud.on { border-color: var(--yellow); box-shadow: 0 0 16px rgba(255, 212, 0, 0.8); }
+  .bud.on img { border-color: var(--yellow); animation: pulse 0.7s ease-in-out infinite; }
+  body.touch .bud .k { display: none; }
+  .msg {
+    position: absolute; left: 0; right: 0; top: 26%; text-align: center; font-family: var(--display); opacity: 0;
+    font-size: clamp(26px, 5.5vw, 64px); line-height: 1.05; color: var(--yellow); padding: 0 12px;
+    -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 5px 0 var(--pink), 0 9px 0 var(--ink);
+    transition: opacity 0.25s;
+  }
+  #hud.duo .msg { font-size: clamp(20px, 4vw, 44px); top: 22%; }
+  .msg.show { opacity: 1; animation: slam 0.4s cubic-bezier(.2, 1.6, .4, 1); }
+  .msg.cool { color: var(--cyan); text-shadow: 0 5px 0 var(--yellow), 0 9px 0 var(--ink); }
+  .msg.good { color: var(--green); text-shadow: 0 5px 0 #1a7a3a, 0 9px 0 var(--ink); }
+  .msg.ouch { color: #ffb0c8; text-shadow: 0 5px 0 #6a3d8a, 0 9px 0 var(--ink); }
+  .wrong {
+    position: absolute; left: 50%; top: 44%; translate: -50% 0; padding: 8px 18px; border-radius: 14px; background: var(--red); border: 3px solid #fff;
+    font-family: var(--display); font-size: clamp(16px, 3vw, 28px); opacity: 0; transition: opacity 0.2s; white-space: nowrap;
+  }
+  .wrong.show { opacity: 1; animation: pulse 0.5s ease-in-out infinite; }
+  .count {
+    position: fixed; left: 0; right: 0; top: 38%; text-align: center; font-family: var(--display); font-size: clamp(70px, 16vw, 180px); line-height: 1;
+    color: #fff; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; text-shadow: 0 8px 0 var(--pink), 0 14px 0 var(--ink); opacity: 0; pointer-events: none;
+  }
+  #hud.duo ~ .count, .count.duo { top: 40%; font-size: clamp(50px, 11vw, 120px); }
+  .count.show { opacity: 1; animation: slam 0.35s ease-out; }
+  .count.go { color: var(--green); }
+  .ibtns { position: fixed; right: calc(max(12px, env(safe-area-inset-right)) + 128px); top: max(10px, env(safe-area-inset-top)); display: flex; gap: 6px; pointer-events: auto; }
+  .ibtn { width: 38px; height: 38px; border-radius: 11px; font-size: 16px; line-height: 1; background: rgba(20, 18, 31, 0.55); border: 2px solid rgba(255, 255, 255, 0.8); display: grid; place-items: center; color: #fff; }
+
+  /* ---------- touch: a steering bar on the left, buttons on the right, one set per player view ---------- */
+  #touch { position: fixed; inset: 0; pointer-events: none; }
+  .tpad { position: absolute; left: 0; right: 0; top: 0; height: 100%; pointer-events: none; }
+  #touch.duo .tpad { height: 50%; }
+  #touch.duo .tpad.p1 { top: 50%; }
+  #touch.solo .tpad.p1 { display: none; }
+  .steer {
+    position: absolute; left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom)); width: 230px; height: 100px; border-radius: 50px;
+    display: flex; pointer-events: auto; touch-action: none; background: rgba(20, 18, 31, 0.45); border: 4px solid rgba(255, 255, 255, 0.85);
+  }
+  .steer span { flex: 1; display: grid; place-items: center; font-size: 40px; color: #fff; text-shadow: 0 2px 0 var(--ink); border-radius: 46px; transition: background 0.08s; }
+  .steer.l span:first-child, .steer.r span:last-child { background: rgba(255, 212, 0, 0.75); color: var(--ink); text-shadow: none; }
+  .tbtns { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); width: 250px; height: 190px; pointer-events: none; }
+  .tb {
+    position: absolute; width: 84px; height: 84px; border-radius: 50%; font-size: 32px; line-height: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    background: linear-gradient(160deg, #ffb35a, var(--orange)); border: 4px solid #fff; box-shadow: 0 6px 0 var(--ink); touch-action: none; pointer-events: auto;
+  }
+  .tb small { font: 800 10px/1 'Rubik', sans-serif; letter-spacing: 0.5px; white-space: nowrap; }
+  .tb.item { right: 0; bottom: 0; width: 104px; height: 104px; font-size: 44px; background: linear-gradient(160deg, #ff8ab8, var(--pink)); }
+  .tb.item.ready { background: linear-gradient(160deg, #fff6a0, #ffb800); border-color: var(--yellow); box-shadow: 0 6px 0 var(--ink), 0 0 24px rgba(255, 212, 0, 0.95); animation: pulse 0.6s ease-in-out infinite; }
+  .tb.hop { right: 114px; bottom: 0; background: linear-gradient(160deg, #7cd0ff, #2a7bd6); }
+  .tb.brake { right: 196px; bottom: 6px; width: 64px; height: 64px; font-size: 24px; background: linear-gradient(160deg, #c8c8d8, #7a7a90); }
+  .tb.down { transform: translateY(5px); box-shadow: 0 1px 0 var(--ink); filter: brightness(1.15); }
+  .callbtn { right: 8px; bottom: 112px; width: 78px; height: 78px; padding: 0; overflow: hidden; --fill: 0; background: conic-gradient(#7dff5a calc(var(--fill) * 360deg), rgba(20, 18, 31, 0.6) 0); }
+  .callbtn img { width: 58px; height: 58px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #ffe2a0, #ff9f1c); object-fit: cover; }
+  .callbtn small { position: absolute; bottom: 4px; left: 0; right: 0; text-shadow: 0 1px 2px var(--ink); }
+  .callbtn.on { border-color: var(--yellow); box-shadow: 0 6px 0 var(--ink), 0 0 24px rgba(255, 212, 0, 0.95); }
+  /* two players on one screen: smaller controls in each half */
+  #touch.duo .steer { width: 180px; height: 78px; }
+  #touch.duo .steer span { font-size: 30px; }
+  #touch.duo .tbtns { transform: scale(0.72); transform-origin: right bottom; }
+  @media (max-height: 460px) {
+    .steer { width: 180px; height: 80px; }
+    .tbtns { transform: scale(0.78); transform-origin: right bottom; }
+    #touch.duo .steer { width: 140px; height: 58px; bottom: 6px; }
+    #touch.duo .tbtns { transform: scale(0.5); bottom: 4px; }
+    .itembox { width: 54px; height: 54px; border-radius: 14px; }
+    .itembox .slot { font-size: 32px; }
+    .placebox { font-size: 44px; }
+    .lapbox .lap { font-size: 17px; }
+    .map { width: 84px; height: 84px; }
+    .ibtns { right: calc(max(12px, env(safe-area-inset-right)) + 90px); }
+    .ibtn { width: 32px; height: 32px; font-size: 13px; }
+    .bud { top: calc(max(10px, env(safe-area-inset-top)) + 48px); }
+    #hud.duo .lapbox { padding: 3px 8px; }
+    #hud.duo .lapbox .lap { font-size: 13px; }
+    #hud.duo .lapbox .time { font-size: 10px; }
+    #hud.duo .itembox { width: 40px; height: 40px; border-width: 2px; }
+    #hud.duo .itembox .slot { font-size: 24px; }
+    #hud.duo .map { width: 56px; height: 56px; }
+    #hud.duo .bud { top: calc(max(6px, env(safe-area-inset-top)) + 36px); padding: 2px 6px 2px 2px; }
+    #hud.duo .bud img { width: 24px; height: 24px; }
+    #hud.duo .bud i { width: 30px; }
+  }
+  #hud.duo .bud .lbl { display: none; }
+  /* 2 players: the ? and A文 buttons sit on the split line at the left edge, so the left-hand things move over */
+  #hud.duo .lapbox, #hud.duo .bud, #touch.duo .steer { left: calc(max(10px, env(safe-area-inset-left)) + 52px); }
+  /* touch: the place moves up under the map, out of the buttons' way */
+  body.touch .placebox { bottom: auto; top: calc(max(10px, env(safe-area-inset-top)) + 128px); }
+  /* 2 players: the place sits left of the map, and pause / sound move to the split line on the right */
+  #hud.duo .placebox, body.touch #hud.duo .placebox { bottom: auto; top: max(8px, env(safe-area-inset-top)); right: calc(max(12px, env(safe-area-inset-right)) + 132px); font-size: 46px; }
+  #hud.duo .ibtns { top: 50%; translate: 0 -50%; right: max(10px, env(safe-area-inset-right)); }
+  @media (max-height: 460px) {
+    #hud.duo .placebox, body.touch #hud.duo .placebox { font-size: 28px; -webkit-text-stroke-width: 2px; right: calc(max(12px, env(safe-area-inset-right)) + 64px); }
+  }
+
+  /* ---------- screens ---------- */
+  .screen {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    gap: clamp(8px, 1.8vh, 16px); padding: 16px; text-align: center; transition: opacity 0.3s;
+    background: linear-gradient(180deg, rgba(20, 24, 60, 0.15), rgba(16, 18, 40, 0.72));
+    overflow-y: auto; justify-content: safe center;
+  }
+  .logo { transform: rotate(-4deg); line-height: 0.9; margin-bottom: 2px; }
+  .logo span { display: block; font-family: var(--display); -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }
+  .logo .l1 { font-size: clamp(44px, min(11vw, 14vh), 132px); white-space: nowrap; color: var(--yellow); text-shadow: 0 6px 0 var(--pink), 0 11px 0 var(--ink), 0 18px 30px rgba(0, 0, 0, 0.35); }
+  .logo .car { display: inline-block; animation: bob 0.6s ease-in-out infinite; }
+  .tag { font-size: clamp(15px, 2.3vw, 20px); font-weight: 700; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+  .btn {
+    font-family: var(--display); font-size: clamp(18px, 3vw, 25px); color: var(--ink);
+    background: var(--yellow); border: 4px solid var(--ink); border-radius: 20px; padding: 11px 24px;
+    box-shadow: 0 8px 0 var(--ink), 0 14px 30px rgba(0, 0, 0, 0.3); transition: transform 0.08s, box-shadow 0.08s;
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:active { transform: translateY(6px); box-shadow: 0 2px 0 var(--ink); }
+  .btn.alt { background: var(--cyan); }
+  .btn.pink { background: #ff8ab8; }
+  .btn.ghost { background: #fff; }
+  .btn.small { font-size: clamp(15px, 2.4vw, 19px); padding: 9px 18px; border-radius: 16px; box-shadow: 0 6px 0 var(--ink); }
+  .btn small { display: block; font: 800 11px/1.2 'Rubik', sans-serif; letter-spacing: 0.5px; margin-top: 3px; }
+  .modes { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .pulse { animation: pulse 1.3s ease-in-out infinite; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .row > span.h { font-family: var(--display); font-size: 14px; letter-spacing: 1px; text-shadow: 0 2px 0 var(--ink); }
+  .opt {
+    display: flex; align-items: center; gap: 8px; padding: 7px 14px 7px 10px; border-radius: 14px; text-align: left;
+    background: rgba(20, 18, 31, 0.55); border: 3px solid rgba(255, 255, 255, 0.7); transition: transform 0.12s;
+  }
+  .opt .e { font-size: 26px; }
+  .opt b { display: block; font-family: var(--display); font-size: 16px; font-weight: 400; }
+  .opt small { font-size: 11px; font-weight: 700; opacity: 0.85; }
+  .opt[aria-checked="true"] { background: rgba(255, 212, 0, 0.3); border-color: var(--yellow); transform: scale(1.05); box-shadow: 0 0 0 3px var(--ink); }
+  .keys {
+    display: grid; grid-template-columns: auto auto auto; gap: 4px 16px; align-items: center; text-align: left;
+    padding: 10px 16px; border-radius: 16px; background: rgba(20, 18, 31, 0.6); border: 2px solid rgba(255, 255, 255, 0.6);
+    font-size: 13px; font-weight: 700;
+  }
+  .keys .h { font-family: var(--display); font-size: 13px; font-weight: 400; letter-spacing: 1px; }
+  .keys .h.p1 { color: #8cc2ff; }
+  .keys .h.p2 { color: #ffb0c8; }
+  kbd {
+    display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; margin: 1px;
+    font: 700 12px/1 system-ui, sans-serif; color: var(--ink); background: #fff; border-radius: 6px; box-shadow: 0 2px 0 #9aa;
+  }
+  .touch-hint { display: none; font-weight: 700; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); max-width: 560px; }
+  @media (hover: none) and (pointer: coarse) {
+    .keys { display: none; }
+    .touch-hint { display: block; }
+  }
+  .credit { position: fixed; right: max(14px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); font-size: 13px; font-weight: 700; opacity: 0.85; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); pointer-events: none; }
+  .credit b { color: #ffe2a0; }
+
+  /* ---------- the pick screen: drivers, then a cup or a track ---------- */
+  .seltitle { font-family: var(--display); font-size: clamp(20px, 3.8vw, 36px); color: var(--yellow); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 5px 0 var(--ink); }
+  .pickrow { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .pickrow .h { font-family: var(--display); font-size: 13px; letter-spacing: 1px; text-shadow: 0 2px 0 var(--ink); }
+  .pickrow .h.p1 { color: #8cc2ff; }
+  .pickrow .h.p2 { color: #ffb0c8; }
+  .cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; max-width: 920px; padding: 6px 4px 2px; }
+  .card {
+    position: relative; padding: 5px 7px 6px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: rgba(20, 18, 31, 0.6); border: 3px solid rgba(255, 255, 255, 0.55); transition: transform 0.12s;
+  }
+  .card img { width: 62px; height: 62px; border-radius: 12px; background: radial-gradient(circle at 50% 35%, #ffe2a0, #ff9f1c); }
+  .card .nm { font-family: var(--display); font-size: 11px; }
+  .card .bl { font-size: 10px; font-weight: 700; opacity: 0.85; }
+  .card.on { border-color: var(--yellow); background: rgba(255, 212, 0, 0.3); transform: translateY(-4px) scale(1.06); box-shadow: 0 0 0 3px var(--ink); }
+  .card.p2.on { border-color: #ffb0c8; background: rgba(255, 61, 127, 0.3); }
+  .card .tr { position: absolute; top: -10px; right: -8px; font-size: 18px; filter: drop-shadow(0 1px 0 var(--ink)); }
+  .card .e { font-size: 34px; line-height: 1.1; }
+  .card.race { min-width: 96px; }
+  .card.cup { min-width: 150px; background: linear-gradient(180deg, rgba(255, 212, 0, 0.25), rgba(20, 18, 31, 0.65)); }
+  .card.cup .bl { max-width: 160px; }
+  .card .boo { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 24px; color: #c8ff9a; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; opacity: 0; pointer-events: none; }
+  .card .boo.show { animation: slam 0.5s ease-out, fadeOut 1s 0.5s forwards; opacity: 1; }
+  @keyframes fadeOut { to { opacity: 0; } }
+  .selbtns { display: flex; gap: 14px; }
+  .hint { font-size: 13px; font-weight: 700; opacity: 0.88; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
+
+  /* ---------- pause, results, trophy ---------- */
+  .big {
+    font-family: var(--display); font-size: clamp(36px, 8vw, 88px); color: var(--cyan); transform: rotate(-4deg); line-height: 1;
+    -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; text-shadow: 0 7px 0 var(--yellow), 0 12px 0 var(--ink);
+  }
+  #resTitle.win { color: var(--yellow); text-shadow: 0 7px 0 var(--pink), 0 12px 0 var(--ink); }
+  .stats { border-collapse: collapse; border-radius: 16px; overflow: hidden; background: rgba(20, 18, 31, 0.7); font-size: 14px; font-weight: 700; }
+  .stats th, .stats td { padding: 3px 10px; white-space: nowrap; }
+  .stats th { font-family: var(--display); font-weight: 400; font-size: 11px; letter-spacing: 0.5px; color: var(--yellow); }
+  .stats td.pl { font-family: var(--display); font-weight: 400; }
+  .stats td.who { text-align: left; display: flex; align-items: center; gap: 6px; font-family: var(--display); font-weight: 400; font-size: 13px; }
+  .stats td.who img { width: 28px; height: 28px; border-radius: 8px; background: radial-gradient(circle at 50% 35%, #ffe2a0, #ff9f1c); }
+  .stats tr.me td { background: rgba(255, 212, 0, 0.28); }
+  .stats tr.me2 td { background: rgba(255, 61, 127, 0.28); }
+  .stats td.pts { color: var(--green); }
+  .btnrow { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  #podium { display: flex; align-items: flex-end; gap: 10px; }
+  #podium .step { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #podium .step img { width: clamp(64px, 12vh, 110px); aspect-ratio: 1; border-radius: 20px; border: 4px solid #fff; background: radial-gradient(circle at 50% 35%, #fff3a0, #ffb02e); box-shadow: 0 6px 0 var(--ink); }
+  #podium .step .blk { width: clamp(80px, 14vh, 130px); border-radius: 12px 12px 0 0; background: linear-gradient(180deg, #ffd400, #ff8a1f); border: 3px solid var(--ink); display: grid; place-items: center; font-family: var(--display); font-size: 30px; color: var(--ink); }
+  #podium .s1 .blk { height: clamp(70px, 14vh, 120px); }
+  #podium .s2 .blk { height: clamp(50px, 10vh, 86px); background: linear-gradient(180deg, #f2f6ff, #a8b4c8); }
+  #podium .s3 .blk { height: clamp(36px, 7vh, 60px); background: linear-gradient(180deg, #ffc890, #c87a3a); }
+  #podium .s1 img { animation: bob 0.8s ease-in-out infinite; }
+  .trow { display: flex; align-items: flex-end; gap: clamp(12px, 3vw, 32px); flex-wrap: wrap; justify-content: center; }
+  #cupTable { font-size: 12px; }
+  #cupTable th, #cupTable td { padding: 1px 8px; }
+  #cupTable td.who img { width: 20px; height: 20px; }
+  #trophyCup { font-size: clamp(60px, 14vh, 120px); line-height: 1; animation: bob 1s ease-in-out infinite; filter: drop-shadow(0 6px 0 var(--ink)); }
+
+  #menuMute {
+    position: fixed; right: max(14px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top));
+    width: 54px; height: 54px; border-radius: 16px; font-size: 26px; line-height: 1; display: grid; place-items: center;
+    background: rgba(20, 18, 31, 0.6); border: 3px solid #fff; box-shadow: 0 4px 0 var(--ink); transition: opacity 0.3s; color: #fff;
+  }
+  #menuMute:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #1d2a52; font-family: var(--display); font-size: 28px; letter-spacing: 2px; padding: 24px; text-align: center; }
+  .rotate { display: none; position: fixed; left: 50%; bottom: 14px; translate: -50% 0; padding: 8px 14px; border-radius: 999px; background: rgba(20, 18, 31, 0.75); font-weight: 800; font-size: 13px; pointer-events: none; white-space: nowrap; }
+  @media (orientation: portrait) and (max-width: 700px) { .rotate { display: block; } }
+  /* short screens (phones sideways), last so it wins: everything tightens up to fit without scrolling */
+  @media (max-height: 460px) {
+    .credit { bottom: auto; right: auto; top: max(8px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); font-size: 11px; }
+    .screen { gap: 6px; padding-top: 6px; padding-bottom: 6px; }
+    .logo .l1 { font-size: 46px; }
+    .touch-hint { font-size: 13px; max-width: 600px; }
+    .modes { gap: 10px; }
+    .row > span.h { display: none; }
+    .modes .btn { font-size: 17px; padding: 8px 12px; border-radius: 16px; box-shadow: 0 6px 0 var(--ink); }
+    .modes .btn small { font-size: 10px; }
+    .seltitle { font-size: 18px; }
+    .cards { padding-top: 3px; gap: 6px; }
+    .card { padding: 2px 4px 3px; }
+    .card img { width: 38px; height: 38px; }
+    .card .bl { display: none; }
+    .card .e { font-size: 22px; }
+    .card.cup { min-width: 110px; }
+    .card.race { min-width: 70px; }
+    .pickrow .h { font-size: 11px; }
+    .selbtns .btn, .btnrow .btn { padding: 6px 14px; box-shadow: 0 4px 0 var(--ink); }
+    #select .hint, #results .hint { display: none; }
+    .big { font-size: 30px; }
+    .stats { font-size: 11px; }
+    .stats th, .stats td { padding: 1px 7px; }
+    .stats td.who img { width: 18px; height: 18px; }
+    #podium .step img { width: 54px; }
+    #trophyCup { font-size: 48px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="split" class="hidden"></div>
+
+<div id="hud" class="hidden solo">
+  <div class="view v0">
+    <div class="lapbox"><b class="lap">LAP 1/3</b><span class="time">0:00.0</span></div>
+    <div class="itembox"><span class="slot"></span><b class="n"></b></div>
+    <canvas class="map" width="160" height="160"></canvas>
+    <div class="bud" data-p="0"><img alt=""><span class="lbl">CALL<b></b></span><i></i><span class="k">T</span></div>
+    <div class="placebox">7th</div>
+    <div class="msg"></div>
+    <div class="wrong">↩ WRONG WAY</div>
+  </div>
+  <div class="view v1">
+    <div class="lapbox"><b class="lap">LAP 1/3</b><span class="time">0:00.0</span></div>
+    <div class="itembox"><span class="slot"></span><b class="n"></b></div>
+    <canvas class="map" width="160" height="160"></canvas>
+    <div class="bud" data-p="1"><img alt=""><span class="lbl">CALL<b></b></span><i></i><span class="k">ENTER</span></div>
+    <div class="placebox">7th</div>
+    <div class="msg"></div>
+    <div class="wrong">↩ WRONG WAY</div>
+  </div>
+  <div class="ibtns">
+    <button id="pauseBtn" class="ibtn" title="Pause (P)">❚❚</button>
+    <button class="ibtn muteBtn" title="Sound (M)">🔊</button>
+  </div>
+</div>
+<div id="count" class="count"></div>
+
+<div id="touch" class="hidden solo">
+  <div class="tpad p0">
+    <div class="steer"><span>◀</span><span>▶</span></div>
+    <div class="tbtns">
+      <button class="tb item" data-act="item"><span class="ic">🎁</span></button>
+      <button class="tb hop" data-act="hop"><span>🦘</span><small>HOP</small></button>
+      <button class="tb brake" data-act="brake"><span>🛑</span></button>
+      <button class="tb callbtn" data-act="call"><img alt=""><small></small></button>
+    </div>
+  </div>
+  <div class="tpad p1">
+    <div class="steer"><span>◀</span><span>▶</span></div>
+    <div class="tbtns">
+      <button class="tb item" data-act="item"><span class="ic">🎁</span></button>
+      <button class="tb hop" data-act="hop"><span>🦘</span><small>HOP</small></button>
+      <button class="tb brake" data-act="brake"><span>🛑</span></button>
+      <button class="tb callbtn" data-act="call"><img alt=""><small></small></button>
+    </div>
+  </div>
+</div>
+
+<div id="title" class="screen hidden">
+  <div class="logo" data-no-lang><span class="l1"><span class="car">🏎️</span> <span id="logoText"></span></span></div>
+  <p class="tag" id="tagline"></p>
+  <div class="modes">
+    <button class="btn pulse" data-mode="1p">🏆 1 PLAYER<small>race the gang, win a cup</small></button>
+    <button class="btn alt" data-mode="2p">👫 2 PLAYERS<small>Teddy &amp; Tommy, split screen</small></button>
+    <button class="btn pink" data-mode="tt">⏱️ TIME TRIAL<small>just you and 3 cookies</small></button>
+  </div>
+  <div class="row" role="radiogroup" aria-label="Difficulty">
+    <span class="h">LEVEL</span>
+    <button class="opt" data-level="easy" role="radio"><span class="e">🐣</span><span><b>EASY</b><small>the gas is on · steering helps · slow CPU</small></span></button>
+    <button class="opt" data-level="normal" role="radio"><span class="e">🔥</span><span><b>NORMAL</b><small>you drive · quick CPU · drift for boosts</small></span></button>
+  </div>
+  <div class="keys">
+    <span></span><span class="h p1">PLAYER 1</span><span class="h p2">PLAYER 2</span>
+    <span>steer · gas · brake</span><span><kbd>A</kbd><kbd>D</kbd> · <kbd>W</kbd> · <kbd>S</kbd></span><span><kbd>←</kbd><kbd>→</kbd> · <kbd>↑</kbd> · <kbd>↓</kbd></span>
+    <span>hop (hold + steer: drift)</span><span><kbd>F</kbd> <kbd>Space</kbd></span><span><kbd>K</kbd></span>
+    <span>use your item</span><span><kbd>G</kbd></span><span><kbd>L</kbd></span>
+    <span>call your brother</span><span><kbd>T</kbd></span><span><kbd>Enter</kbd></span>
+  </div>
+  <p class="touch-hint">Hold ◀ or ▶ to steer: the gas is always on. 🎁 uses your item, 🦘 hops (hold it in a bend to drift), 🛑 brakes. Tap your brother's face to call him!</p>
+  <div class="credit">built with <b>Claude Code</b></div>
+</div>
+
+<div id="select" class="screen hidden">
+  <div id="selTitle" class="seltitle">PICK YOUR DRIVER</div>
+  <div class="pickrow" id="row0"><span class="h p1" id="row0h">PLAYER 1</span><div class="cards" id="cards0" role="listbox" aria-label="Drivers"></div></div>
+  <div class="pickrow" id="row1"><span class="h p2">PLAYER 2</span><div class="cards" id="cards1" role="listbox" aria-label="Drivers"></div></div>
+  <div class="pickrow"><span class="h" id="raceHead">PICK A CUP OR A TRACK</span><div class="cards" id="races" role="listbox" aria-label="Races"></div></div>
+  <div class="selbtns">
+    <button id="selBack" class="btn small ghost">◀ BACK</button>
+    <button id="selGo" class="btn small">GO! 🏁</button>
+  </div>
+  <p class="hint" id="selHint">Enter: go · Esc: back</p>
+</div>
+
+<div id="pause" class="screen hidden">
+  <div class="big">PAUSED</div>
+  <div class="btnrow">
+    <button id="resumeBtn" class="btn">▶ RESUME</button>
+    <button id="quitBtn" class="btn small ghost">MENU</button>
+  </div>
+  <p class="hint">P · Esc · Space to resume · Q for the menu · M sound</p>
+</div>
+
+<div id="results" class="screen hidden">
+  <div id="resTitle" class="big">1st PLACE!</div>
+  <p id="resSub" class="tag"></p>
+  <table id="resTable" class="stats"></table>
+  <div class="btnrow">
+    <button id="nextBtn" class="btn">NEXT RACE ▶</button>
+    <button id="againBtn" class="btn alt small">↻ RACE AGAIN</button>
+    <button id="menuBtn" class="btn ghost small">MENU</button>
+  </div>
+  <p class="hint">Enter: next · Esc: menu</p>
+</div>
+
+<div id="trophy" class="screen hidden">
+  <div id="trophyCup">🏆</div>
+  <div id="trophyTitle" class="big">CUP WINNER!</div>
+  <p id="trophySub" class="tag"></p>
+  <div class="trow"><div id="podium"></div><table id="cupTable" class="stats"></table></div>
+  <div class="btnrow">
+    <button id="cupAgain" class="btn">↻ PLAY THE CUP AGAIN</button>
+    <button id="cupMenu" class="btn ghost small">MENU</button>
+  </div>
+</div>
+
+<button id="menuMute" class="muteBtn hidden" title="Sound on / off (M)" aria-label="Sound on or off">🔊</button>
+
+<div id="loading">LOADING…</div>
+<div class="rotate">↻ Turn sideways for a bigger track!</div>
+
+<script src="kit/three.min.js"></script>
+<script src="kit/gfx.js"></script>
+<script src="kit/people.js"></script>
+<script src="kit/roster.js"></script>
+<script src="kit/portraits.js"></script>
+<script src="kit/sound.js"></script>
+<script src="kit/lang.js"></script>
+<script src="kit/help.js"></script>
+<script src="js/title.js"></script>
+<script src="js/geo.js"></script>
+<script src="js/tracks.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/soak.js"></script>
+<script src="js/input.js"></script>
+<script src="js/art.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/sfx.js"></script>
+<script src="js/game.js"></script>
+<script src="js/keys.js"></script>
+<script src="js/zh.js"></script>
+</body>
+</html>
